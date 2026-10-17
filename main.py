@@ -154,14 +154,7 @@ def health():
 @app.post("/api/generate")
 def generate_game(body: GenerateInput):
     if not GEMINI_API_KEY:
-        raise HTTPException(
-            503, "Set GEMINI_API_KEY in Railway Variables."
-        )
-
-    endpoint = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent"
-    )
+        raise HTTPException(503, "Set GEMINI_API_KEY in Railway Variables.")
 
     prompt = (
         "Create a complete playable HTML5 game as one "
@@ -171,68 +164,66 @@ def generate_game(body: GenerateInput):
         ". User request: " + body.prompt
     )
 
-    try:
-        response = requests.post(
-            endpoint,
-            params={"key": GEMINI_API_KEY},
-            json={
-                "contents": [
-                    {"parts": [{"text": prompt}]}
-                ]
-            },
-            timeout=90,
+    models = list(dict.fromkeys([
+        GEMINI_MODEL,
+        "gemini-2.5-flash",
+        "gemini-1.5-flash",
+    ]))
+    errors = []
+
+    for model in models:
+        endpoint = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{model}:generateContent"
         )
+        try:
+            response = requests.post(
+                endpoint,
+                params={"key": GEMINI_API_KEY},
+                json={"contents": [{"parts": [{"text": prompt}]}]},
+                timeout=(10, 35),
+            )
+            try:
+                data = response.json()
+            except ValueError:
+                data = {}
+        except requests.RequestException as exc:
+            errors.append(f"{model}: {type(exc).__name__}")
+            continue
+
+        if not response.ok:
+            message = data.get("error", {}).get("message", "Request failed")
+            if response.status_code in (400, 404, 429, 500, 502, 503, 504):
+                errors.append(f"{model}: HTTP {response.status_code}")
+                continue
+            raise HTTPException(502, message[:500])
 
         try:
-            data = response.json()
-        except ValueError:
-            data = {}
+            html = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        except (KeyError, IndexError, TypeError):
+            errors.append(f"{model}: no generated text")
+            continue
 
-    except requests.RequestException as exc:
-        raise HTTPException(
-            502,
-            f"Gemini connection failed: {type(exc).__name__}"
-        )
+        html = re.sub(
+            r"^```(?:html)?\s*|\s*```$",
+            "",
+            html,
+            flags=re.I,
+        ).strip()
 
-    if not response.ok:
-        message = data.get("error", {}).get(
-            "message", "Gemini request failed."
-        )
-        raise HTTPException(502, message[:500])
+        if "<html" not in html.lower() and "<!doctype html" not in html.lower():
+            errors.append(f"{model}: output is not a full HTML document")
+            continue
 
-    try:
-        html = (
-            data["candidates"][0]["content"]["parts"][0]["text"]
-            .strip()
-        )
-    except (KeyError, IndexError, TypeError):
-        raise HTTPException(
-            502, "Gemini returned no generated text."
-        )
+        return {"name": body.name, "html": html, "model": model}
 
-    html = re.sub(
-        r"^```(?:html)?\s*|\s*```$",
-        "",
-        html,
-        flags=re.I
-    ).strip()
-
-    if (
-        "<html" not in html.lower()
-        and "<!doctype html" not in html.lower()
-    ):
-        raise HTTPException(
-            502, "Gemini output is not a full HTML document."
-        )
-
-    return {
-        "name": body.name,
-        "html": html,
-        "model": GEMINI_MODEL
-    }
+    raise HTTPException(
+        502,
+        "All attempted Gemini models failed. Check model IDs and Railway "
+        "GEMINI_API_KEY. Details: " + "; ".join(errors)[:800],
+    )
 
 
-# ==========================================
 # SAVE A GAME
 # ==========================================
 
