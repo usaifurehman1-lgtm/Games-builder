@@ -1,30 +1,35 @@
-
-
-
-
 import os
-from dotenv import load_dotenv
-load_dotenv()
 import re
 import json
 import uuid
 import zipfile
 import tempfile
+import logging
+
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional
 
 import requests
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel, Field
 
+load_dotenv()
+
 # ==========================================
-# GAME10 - SINGLE FILE RAILWAY BACKEND
+# GAME10 - COMPLETE RAILWAY BACKEND
 # ==========================================
 
-app = FastAPI(title="Game10 Backend", version="2.0.0")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("game10")
+
+app = FastAPI(
+    title="Game10 Backend",
+    version="3.0.0",
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -34,6 +39,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ==========================================
+# STORAGE CONFIGURATION
+# ==========================================
+
 DATA = Path(os.getenv("DATA_DIR", "data"))
 GAMES = DATA / "games"
 BUILDS = DATA / "builds"
@@ -41,16 +50,15 @@ BUILDS = DATA / "builds"
 GAMES.mkdir(parents=True, exist_ok=True)
 BUILDS.mkdir(parents=True, exist_ok=True)
 
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+PUBLIC_BASE_URL = os.getenv(
+    "PUBLIC_BASE_URL", ""
+).rstrip("/")
+
+# ==========================================
+# AI API KEYS
+# ==========================================
+
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "").strip()
-GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY", "").strip()
-GITHUB_WORKFLOW = os.getenv("GITHUB_WORKFLOW", "build-apk.yml").strip()
-GITHUB_REF = os.getenv("GITHUB_REF", "main").strip()
-
-
-# PYTHON AI API KEYS
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
 CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY", "").strip()
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "").strip()
@@ -61,12 +69,29 @@ FIREWORKS_API_KEY = os.getenv("FIREWORKS_API_KEY", "").strip()
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY", "").strip()
 AI21_API_KEY = os.getenv("AI21_API_KEY", "").strip()
 REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "").strip()
-
-# ==========================================
 SAMBANOVA_API_KEY = os.getenv("SAMBANOVA_API_KEY", "").strip()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY", "").strip()
 
+# ==========================================
+# GITHUB ACTIONS CONFIGURATION
+# ==========================================
+
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "").strip()
+
+GITHUB_REPOSITORY = os.getenv(
+    "GITHUB_REPOSITORY", ""
+).strip()
+
+GITHUB_WORKFLOW = os.getenv(
+    "GITHUB_WORKFLOW", "build-apk.yml"
+).strip()
+
+GITHUB_REF = os.getenv(
+    "GITHUB_REF", "main"
+).strip()
+
+# ==========================================
 # REQUEST MODELS
 # ==========================================
 
@@ -102,18 +127,27 @@ def json_read(path: Path) -> dict:
 
 def json_write(path: Path, value: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, indent=2), encoding="utf-8")
+
+    path.write_text(
+        json.dumps(value, indent=2),
+        encoding="utf-8",
+    )
 
 
 def github_headers() -> dict:
     if not GITHUB_TOKEN:
         raise HTTPException(
-            503, "GITHUB_TOKEN is not configured in Railway."
+            503,
+            "GITHUB_TOKEN is not configured in Railway.",
         )
 
-    if not re.fullmatch(r"[^/\s]+/[^/\s]+", GITHUB_REPOSITORY):
+    if not re.fullmatch(
+        r"[^/\s]+/[^/\s]+",
+        GITHUB_REPOSITORY,
+    ):
         raise HTTPException(
-            503, "Set GITHUB_REPOSITORY as owner/repository."
+            503,
+            "Set GITHUB_REPOSITORY as owner/repository.",
         )
 
     return {
@@ -123,9 +157,13 @@ def github_headers() -> dict:
     }
 
 
-def github_api_error(response: requests.Response, action: str):
+def github_api_error(
+    response: requests.Response,
+    action: str,
+):
     if not response.ok:
         detail = ""
+
         try:
             detail = response.json().get("message", "")
         except (ValueError, AttributeError):
@@ -133,9 +171,339 @@ def github_api_error(response: requests.Response, action: str):
 
         raise HTTPException(
             502,
-            f"GitHub {action} failed (HTTP {response.status_code}). "
-            f"{detail[:300]}"
+            f"GitHub {action} failed "
+            f"(HTTP {response.status_code}). "
+            f"{detail[:300]}",
         )
+
+
+# ==========================================
+# AI PROVIDER CONFIGURATION
+# ==========================================
+
+AI_PROVIDERS = [
+    {
+        "name": "Gemini",
+        "key": GEMINI_API_KEY,
+        "url": (
+            "https://generativelanguage.googleapis.com/"
+            "v1beta/openai/chat/completions"
+        ),
+        "model": os.getenv(
+            "GEMINI_MODEL", "gemini-2.5-flash"
+        ),
+        "style": "openai",
+    },
+    {
+        "name": "Groq",
+        "key": GROQ_API_KEY,
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "model": os.getenv(
+            "GROQ_MODEL", "llama-3.3-70b-versatile"
+        ),
+        "style": "openai",
+    },
+    {
+        "name": "Cerebras",
+        "key": CEREBRAS_API_KEY,
+        "url": "https://api.cerebras.ai/v1/chat/completions",
+        "model": os.getenv(
+            "CEREBRAS_MODEL", "llama-3.3-70b"
+        ),
+        "style": "openai",
+    },
+    {
+        "name": "Mistral",
+        "key": MISTRAL_API_KEY,
+        "url": "https://api.mistral.ai/v1/chat/completions",
+        "model": os.getenv(
+            "MISTRAL_MODEL", "mistral-small-latest"
+        ),
+        "style": "openai",
+    },
+    {
+        "name": "Cohere",
+        "key": COHERE_API_KEY,
+        "url": (
+            "https://api.cohere.com/compatibility/v1/"
+            "chat/completions"
+        ),
+        "model": os.getenv(
+            "COHERE_MODEL", "command-a-03-2025"
+        ),
+        "style": "openai",
+    },
+    {
+        "name": "DeepSeek",
+        "key": DEEPSEEK_API_KEY,
+        "url": "https://api.deepseek.com/chat/completions",
+        "model": os.getenv(
+            "DEEPSEEK_MODEL", "deepseek-chat"
+        ),
+        "style": "openai",
+    },
+    {
+        "name": "Together AI",
+        "key": TOGETHER_API_KEY,
+        "url": "https://api.together.xyz/v1/chat/completions",
+        "model": os.getenv(
+            "TOGETHER_MODEL",
+            "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        ),
+        "style": "openai",
+    },
+    {
+        "name": "Fireworks AI",
+        "key": FIREWORKS_API_KEY,
+        "url": (
+            "https://api.fireworks.ai/inference/v1/"
+            "chat/completions"
+        ),
+        "model": os.getenv(
+            "FIREWORKS_MODEL",
+            "accounts/fireworks/models/"
+            "llama-v3p3-70b-instruct",
+        ),
+        "style": "openai",
+    },
+    {
+        "name": "Perplexity",
+        "key": PERPLEXITY_API_KEY,
+        "url": "https://api.perplexity.ai/chat/completions",
+        "model": os.getenv(
+            "PERPLEXITY_MODEL", "sonar"
+        ),
+        "style": "openai",
+    },
+    {
+        "name": "AI21",
+        "key": AI21_API_KEY,
+        "url": "https://api.ai21.com/studio/v1/chat/completions",
+        "model": os.getenv(
+            "AI21_MODEL", "jamba-mini"
+        ),
+        "style": "openai",
+    },
+    {
+        "name": "Replicate",
+        "key": REPLICATE_API_TOKEN,
+        "url": "https://api.replicate.com/v1/predictions",
+        "model": os.getenv(
+            "REPLICATE_MODEL_VERSION", ""
+        ),
+        "style": "replicate",
+    },
+    {
+        "name": "SambaNova",
+        "key": SAMBANOVA_API_KEY,
+        "url": "https://api.sambanova.ai/v1/chat/completions",
+        "model": os.getenv(
+            "SAMBANOVA_MODEL",
+            "Meta-Llama-3.3-70B-Instruct",
+        ),
+        "style": "openai",
+    },
+    {
+        "name": "OpenRouter",
+        "key": OPENROUTER_API_KEY,
+        "url": (
+            "https://openrouter.ai/api/v1/"
+            "chat/completions"
+        ),
+        "model": os.getenv(
+            "OPENROUTER_MODEL",
+            "meta-llama/llama-3.3-70b-instruct",
+        ),
+        "style": "openai",
+    },
+    {
+        "name": "Hugging Face",
+        "key": HUGGINGFACE_API_KEY,
+        "url": (
+            "https://router.huggingface.co/v1/"
+            "chat/completions"
+        ),
+        "model": os.getenv(
+            "HUGGINGFACE_MODEL",
+            "Qwen/Qwen2.5-72B-Instruct",
+        ),
+        "style": "openai",
+    },
+]
+
+
+# ==========================================
+# AI CALL - OPENAI-COMPATIBLE PROVIDERS
+# ==========================================
+
+def call_openai_compatible(
+    provider: dict,
+    prompt: str,
+) -> str:
+
+    headers = {
+        "Authorization": f"Bearer {provider['key']}",
+        "Content-Type": "application/json",
+    }
+
+    if provider["name"] == "Gemini":
+        headers["Authorization"] = (
+            f"Bearer {provider['key']}"
+        )
+
+    response = requests.post(
+        provider["url"],
+        headers=headers,
+        json={
+            "model": provider["model"],
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Create a complete playable HTML5 game. "
+                        "Return a single full HTML document "
+                        "with CSS and JavaScript included. "
+                        "Do not return Markdown fences."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
+            "temperature": 0.7,
+        },
+        timeout=(10, 60),
+    )
+
+    response.raise_for_status()
+
+    data = response.json()
+
+    content = data["choices"][0]["message"]["content"]
+
+    if isinstance(content, list):
+        content = "".join(
+            str(part.get("text", ""))
+            for part in content
+            if isinstance(part, dict)
+        )
+
+    if not isinstance(content, str) or not content.strip():
+        raise ValueError("Provider returned empty content.")
+
+    return content.strip()
+
+
+# ==========================================
+# REPLICATE API
+# ==========================================
+
+def call_replicate(
+    provider: dict,
+    prompt: str,
+) -> str:
+
+    if not provider["model"]:
+        raise ValueError(
+            "Set REPLICATE_MODEL_VERSION to a supported "
+            "Replicate model version."
+        )
+
+    headers = {
+        "Authorization": (
+            f"Bearer {provider['key']}"
+        ),
+        "Content-Type": "application/json",
+        "Prefer": "wait=60",
+    }
+
+    response = requests.post(
+        provider["url"],
+        headers=headers,
+        json={
+            "version": provider["model"],
+            "input": {
+                "prompt": (
+                    "Create a complete playable HTML5 game. "
+                    "Return only HTML with inline CSS and "
+                    "JavaScript. User request: "
+                    + prompt
+                ),
+            },
+        },
+        timeout=(10, 70),
+    )
+
+    response.raise_for_status()
+    data = response.json()
+
+    if data.get("status") == "failed":
+        raise ValueError(
+            "Replicate prediction failed."
+        )
+
+    output = data.get("output", "")
+
+    if isinstance(output, list):
+        output = "".join(
+            str(part) for part in output
+        )
+
+    if not isinstance(output, str) or not output.strip():
+        raise ValueError(
+            "Replicate returned no text. "
+            "The model may require a different input format."
+        )
+
+    return output.strip()
+
+
+# ==========================================
+# CALL ONE AI PROVIDER
+# ==========================================
+
+def call_ai_provider(
+    provider: dict,
+    prompt: str,
+) -> str:
+
+    if provider["style"] == "replicate":
+        return call_replicate(provider, prompt)
+
+    return call_openai_compatible(provider, prompt)
+
+
+# ==========================================
+# CLEAN AND VALIDATE HTML
+# ==========================================
+
+def clean_game_html(html: str) -> str:
+
+    html = re.sub(
+        r"^\s*```(?:html)?\s*",
+        "",
+        html,
+        flags=re.I,
+    )
+
+    html = re.sub(
+        r"\s*```\s*$",
+        "",
+        html,
+    )
+
+    html = html.strip()
+
+    if (
+        "<html" not in html.lower()
+        and "<!doctype html" not in html.lower()
+    ):
+        raise ValueError(
+            "AI output is not a complete HTML document."
+        )
+
+    return html
 
 
 # ==========================================
@@ -147,11 +515,14 @@ def home():
     return {
         "app": "Game10 Backend",
         "status": "running",
+        "version": "3.0.0",
         "features": [
             "game-save",
-            "Gemini-generation",
-            "GitHub-Actions-APK-build"
-        ]
+            "multi-provider-ai-fallback",
+            "github-actions-apk-build",
+            "apk-download",
+        ],
+        "ai_provider_count": len(AI_PROVIDERS),
     }
 
 
@@ -159,158 +530,183 @@ def home():
 def health():
     return {
         "ok": True,
-        "gemini_configured": bool(GEMINI_API_KEY),
+        "ai_providers": {
+            provider["name"]: bool(provider["key"])
+            for provider in AI_PROVIDERS
+        },
+        "configured_ai_count": sum(
+            bool(provider["key"])
+            for provider in AI_PROVIDERS
+        ),
         "github_build_configured": bool(
             GITHUB_TOKEN and GITHUB_REPOSITORY
         ),
-        "public_url_configured": bool(PUBLIC_BASE_URL),
+        "public_url_configured": bool(
+            PUBLIC_BASE_URL
+        ),
     }
 
 
 # ==========================================
-# GEMINI AI GAME GENERATION
+# AI GAME GENERATION - FALLBACK WORKFLOW
 # ==========================================
 
 @app.post("/api/generate")
 def generate_game(body: GenerateInput):
-    if not GEMINI_API_KEY:
-        raise HTTPException(503, "Set GEMINI_API_KEY in Railway Variables.")
 
     prompt = (
         "Create a complete playable HTML5 game as one "
-        "self-contained HTML document. Include CSS and JavaScript "
-        "in the same file. Return only HTML, without Markdown fences. "
-        "Game title: " + body.name +
-        ". User request: " + body.prompt
+        "self-contained HTML document. Include CSS and "
+        "JavaScript in the same file. Return only HTML, "
+        "without Markdown fences.\n\n"
+        f"Game title: {body.name}\n"
+        f"User request: {body.prompt}"
     )
 
-    models = list(dict.fromkeys([
-        GEMINI_MODEL,
-        "gemini-1.5-flash",
-        "gemini-2.5-flash",
-        "gemini-2.5-pro",
-        "gemini-2.5-flash-preview-tts",
-        "gemini-2.5-pro-preview-tts",
-        "gemini-flash-latest",
-        "gemini-flash-lite-latest",
-        "gemini-pro-latest",
-        "gemini-2.5-flash-lite",
-        "gemini-2.5-flash-image",
-        "gemini-3-flash-preview",
-        "gemini-3.1-pro-preview",
-        "gemini-3.1-pro-preview-customtools",
-        "gemini-3.1-flash-lite-preview",
-        "gemini-3.1-flash-lite",
-        "gemini-3-pro-image-preview",
-        "gemini-3-pro-image",
-        "nano-banana-pro-preview",
-        "gemini-3.1-flash-image-preview",
-        "gemini-3.1-flash-image",
-        "gemini-3.1-flash-lite-image",
-        "gemini-nano-banana-2.1",
-        "gemini-3.5-flash",
-        "gemini-3.5-flash-lite",
-        "gemini-omni-flash-preview",
-        "gemini-omni-1.1-flash",
-        "gemini-3.5-transcribe",
-        "gemini-3.6-flash",
-        "gemini-3.7-flash",
-        "gemini-3.8-flash",
-        "gemini-4-argon",
-        "lyria-3-clip-preview",
-        "lyria-3-pro-preview",
-        "lyria-3.5",
-        "gemini-3.1-flash-tts-preview",
-        "gemini-3.8-flash-tts",
-        "gemini-3.8-flash-lite-tts",
-        "gemini-robotics-er-2-preview",
-        "gemini-2.5-computer-use-preview-10-2025",
-        "antigravity-preview-05-2026",
-        "antigravity-preview-09-2026",
-        "antigravity-preview-latest",
-        "deep-research-max-preview-04-2026",
-        "deep-research-preview-04-2026",
-        "deep-research-pro-preview-12-2025",
-    ]))
     errors = []
 
-    for model in models:
-        endpoint = (
-            "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{model}:generateContent"
-        )
-        try:
-            response = requests.post(
-                endpoint,
-                params={"key": GEMINI_API_KEY},
-                json={"contents": [{"parts": [{"text": prompt}]}]},
-                timeout=(10, 35),
+    for provider in AI_PROVIDERS:
+
+        if not provider["key"]:
+            logger.info(
+                "Skipping %s: API key not configured.",
+                provider["name"],
             )
-            try:
-                data = response.json()
-            except ValueError:
-                data = {}
-        except requests.RequestException as exc:
-            errors.append(f"{model}: {type(exc).__name__}")
             continue
 
-        if not response.ok:
-            message = data.get("error", {}).get("message", "Request failed")
-            if response.status_code in (400, 404, 429, 500, 502, 503, 504):
-                errors.append(f"{model}: HTTP {response.status_code}")
-                continue
-            raise HTTPException(502, message[:500])
+        logger.info(
+            "Trying AI provider: %s",
+            provider["name"],
+        )
 
         try:
-            html = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-        except (KeyError, IndexError, TypeError):
-            errors.append(f"{model}: no generated text")
+            raw_html = call_ai_provider(
+                provider,
+                prompt,
+            )
+
+            html = clean_game_html(raw_html)
+
+            logger.info(
+                "AI generation succeeded: %s",
+                provider["name"],
+            )
+
+            return {
+                "name": body.name,
+                "html": html,
+                "provider": provider["name"],
+                "model": provider["model"],
+            }
+
+        except requests.HTTPError as exc:
+
+            status = (
+                exc.response.status_code
+                if exc.response is not None
+                else 0
+            )
+
+            logger.warning(
+                "%s failed with HTTP %s",
+                provider["name"],
+                status,
+            )
+
+            errors.append(
+                f"{provider['name']}: HTTP {status}"
+            )
+
             continue
 
-        html = re.sub(
-            r"^```(?:html)?\s*|\s*```$",
-            "",
-            html,
-            flags=re.I,
-        ).strip()
+        except requests.RequestException as exc:
 
-        if "<html" not in html.lower() and "<!doctype html" not in html.lower():
-            errors.append(f"{model}: output is not a full HTML document")
+            logger.warning(
+                "%s network error: %s",
+                provider["name"],
+                type(exc).__name__,
+            )
+
+            errors.append(
+                f"{provider['name']}: network error"
+            )
+
             continue
 
-        return {"name": body.name, "html": html, "model": model}
+        except (
+            ValueError,
+            KeyError,
+            IndexError,
+            TypeError,
+        ) as exc:
+
+            logger.warning(
+                "%s returned invalid output: %s",
+                provider["name"],
+                type(exc).__name__,
+            )
+
+            errors.append(
+                f"{provider['name']}: invalid response"
+            )
+
+            continue
 
     raise HTTPException(
-        502,
-        "All attempted Gemini models failed. Check model IDs and Railway "
-        "GEMINI_API_KEY. Details: " + "; ".join(errors)[:800],
+        status_code=502,
+        detail={
+            "message": (
+                "No configured AI provider generated "
+                "a valid HTML game."
+            ),
+            "attempted_errors": errors,
+            "configured_ai_count": sum(
+                bool(provider["key"])
+                for provider in AI_PROVIDERS
+            ),
+        },
     )
 
 
+# ==========================================
 # SAVE A GAME
 # ==========================================
 
 @app.post("/api/games")
 def create_game(body: GameInput):
+
     if not body.html.strip():
-        raise HTTPException(400, "Game HTML is empty.")
+        raise HTTPException(
+            400,
+            "Game HTML is empty.",
+        )
 
     game_id = uuid.uuid4().hex[:12]
+
     folder = GAMES / game_id
-    folder.mkdir(parents=True, exist_ok=False)
+    folder.mkdir(
+        parents=True,
+        exist_ok=False,
+    )
 
     (folder / "index.html").write_text(
-        body.html, encoding="utf-8"
+        body.html,
+        encoding="utf-8",
     )
 
     record = {
         "id": game_id,
         "name": body.name,
         "status": "saved",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(
+            timezone.utc
+        ).isoformat(),
     }
 
-    json_write(folder / "record.json", record)
+    json_write(
+        folder / "record.json",
+        record,
+    )
 
     game_url = (
         f"{PUBLIC_BASE_URL}/games/{game_id}"
@@ -318,78 +714,127 @@ def create_game(body: GameInput):
         else f"/games/{game_id}"
     )
 
-    return {**record, "game_url": game_url}
+    return {
+        **record,
+        "game_url": game_url,
+    }
 
 
-@app.get("/games/{game_id}", response_class=HTMLResponse)
+# ==========================================
+# OPEN SAVED GAME
+# ==========================================
+
+@app.get(
+    "/games/{game_id}",
+    response_class=HTMLResponse,
+)
 def get_game(game_id: str):
+
     if not valid_id(game_id):
-        raise HTTPException(400, "Invalid game ID.")
+        raise HTTPException(
+            400,
+            "Invalid game ID.",
+        )
 
     file = GAMES / game_id / "index.html"
 
     if not file.is_file():
-        raise HTTPException(404, "Game not found.")
+        raise HTTPException(
+            404,
+            "Game not found.",
+        )
 
     return HTMLResponse(
         file.read_text(encoding="utf-8")
     )
 
 
+# ==========================================
+# LIST SAVED GAMES
+# ==========================================
+
 @app.get("/api/games")
 def list_games():
+
     items = []
 
     for folder in GAMES.iterdir():
+
         if folder.is_dir():
-            record = json_read(folder / "record.json")
+
+            record = json_read(
+                folder / "record.json"
+            )
+
             if record:
                 items.append(record)
 
     return sorted(
         items,
-        key=lambda item: item.get("created_at", ""),
-        reverse=True
+        key=lambda item: item.get(
+            "created_at", ""
+        ),
+        reverse=True,
     )
 
 
+# ==========================================
+# GET GAME RECORD
+# ==========================================
+
 @app.get("/api/games/{game_id}")
 def game_record(game_id: str):
+
     if not valid_id(game_id):
-        raise HTTPException(400, "Invalid game ID.")
+        raise HTTPException(
+            400,
+            "Invalid game ID.",
+        )
 
     record = json_read(
         GAMES / game_id / "record.json"
     )
 
     if not record:
-        raise HTTPException(404, "Game not found.")
+        raise HTTPException(
+            404,
+            "Game not found.",
+        )
 
     return record
 
 
 # ==========================================
-# START REAL APK BUILD THROUGH GITHUB ACTIONS
+# REQUEST REAL APK BUILD
 # ==========================================
 
 @app.post("/api/builds")
 def request_build(body: BuildInput):
-    if not valid_id(body.game_id):
-        raise HTTPException(400, "Invalid game_id.")
 
-    game_file = GAMES / body.game_id / "index.html"
+    if not valid_id(body.game_id):
+        raise HTTPException(
+            400,
+            "Invalid game_id.",
+        )
+
+    game_file = (
+        GAMES / body.game_id / "index.html"
+    )
 
     if not game_file.is_file():
         raise HTTPException(
-            404, "Save the game before requesting an APK build."
+            404,
+            "Save the game before requesting an APK build.",
         )
 
     headers = github_headers()
+
     build_id = uuid.uuid4().hex[:12]
 
     dispatch_url = (
-        f"https://api.github.com/repos/{GITHUB_REPOSITORY}"
-        f"/actions/workflows/{GITHUB_WORKFLOW}/dispatches"
+        f"https://api.github.com/repos/"
+        f"{GITHUB_REPOSITORY}/actions/workflows/"
+        f"{GITHUB_WORKFLOW}/dispatches"
     )
 
     payload = {
@@ -408,37 +853,49 @@ def request_build(body: BuildInput):
             json=payload,
             timeout=25,
         )
+
     except requests.RequestException:
         raise HTTPException(
-            502, "Could not connect to GitHub Actions."
+            502,
+            "Could not connect to GitHub Actions.",
         )
 
     if response.status_code != 204:
-        github_api_error(response, "workflow dispatch")
+        github_api_error(
+            response,
+            "workflow dispatch",
+        )
 
     record = {
         "id": build_id,
         "game_id": body.game_id,
         "status": "queued",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(
+            timezone.utc
+        ).isoformat(),
         "github_run_url": None,
     }
 
-    json_write(BUILDS / f"{build_id}.json", record)
+    json_write(
+        BUILDS / f"{build_id}.json",
+        record,
+    )
 
     return record
 
 
 # ==========================================
-# FIND THE GITHUB BUILD RUN
+# FIND GITHUB ACTIONS RUN
 # ==========================================
 
 def find_run(build_id: str) -> Optional[dict]:
+
     headers = github_headers()
 
     url = (
-        f"https://api.github.com/repos/{GITHUB_REPOSITORY}"
-        f"/actions/workflows/{GITHUB_WORKFLOW}/runs"
+        f"https://api.github.com/repos/"
+        f"{GITHUB_REPOSITORY}/actions/workflows/"
+        f"{GITHUB_WORKFLOW}/runs"
     )
 
     try:
@@ -448,14 +905,22 @@ def find_run(build_id: str) -> Optional[dict]:
             params={"per_page": 100},
             timeout=25,
         )
+
     except requests.RequestException:
         raise HTTPException(
-            502, "Could not contact GitHub to check build status."
+            502,
+            "Could not contact GitHub to check build status.",
         )
 
-    github_api_error(response, "workflow status lookup")
+    github_api_error(
+        response,
+        "workflow status lookup",
+    )
 
-    for run in response.json().get("workflow_runs", []):
+    for run in response.json().get(
+        "workflow_runs", []
+    ):
+
         title = str(
             run.get("display_title")
             or run.get("name")
@@ -474,22 +939,33 @@ def find_run(build_id: str) -> Optional[dict]:
 
 @app.get("/api/builds/{build_id}")
 def build_status(build_id: str):
+
     if not valid_id(build_id):
-        raise HTTPException(400, "Invalid build ID.")
+        raise HTTPException(
+            400,
+            "Invalid build ID.",
+        )
 
     path = BUILDS / f"{build_id}.json"
+
     record = json_read(path)
 
     if not record:
-        raise HTTPException(404, "Build not found.")
+        raise HTTPException(
+            404,
+            "Build not found.",
+        )
 
     run = find_run(build_id)
 
     if run:
+
         if run.get("status") != "completed":
             state = "running"
+
         elif run.get("conclusion") == "success":
             state = "success"
+
         else:
             state = "failed"
 
@@ -506,20 +982,27 @@ def build_status(build_id: str):
 
 
 # ==========================================
-# DOWNLOAD THE BUILT APK
+# DOWNLOAD BUILT APK
 # ==========================================
 
 @app.get("/api/builds/{build_id}/download")
 def download_apk(build_id: str):
+
     if not valid_id(build_id):
-        raise HTTPException(400, "Invalid build ID.")
+        raise HTTPException(
+            400,
+            "Invalid build ID.",
+        )
 
     record = json_read(
         BUILDS / f"{build_id}.json"
     )
 
     if not record:
-        raise HTTPException(404, "Build not found.")
+        raise HTTPException(
+            404,
+            "Build not found.",
+        )
 
     run = find_run(build_id)
 
@@ -530,14 +1013,16 @@ def download_apk(build_id: str):
     ):
         raise HTTPException(
             409,
-            "APK is not ready. Check build status and GitHub Actions logs."
+            "APK is not ready. Check build status "
+            "and GitHub Actions logs.",
         )
 
     headers = github_headers()
 
     url = (
-        f"https://api.github.com/repos/{GITHUB_REPOSITORY}"
-        f"/actions/runs/{run['id']}/artifacts"
+        f"https://api.github.com/repos/"
+        f"{GITHUB_REPOSITORY}/actions/runs/"
+        f"{run['id']}/artifacts"
     )
 
     try:
@@ -547,19 +1032,26 @@ def download_apk(build_id: str):
             params={"per_page": 100},
             timeout=25,
         )
+
     except requests.RequestException:
         raise HTTPException(
-            502, "Could not fetch GitHub artifacts."
+            502,
+            "Could not fetch GitHub artifacts.",
         )
 
-    github_api_error(response, "artifact lookup")
+    github_api_error(
+        response,
+        "artifact lookup",
+    )
 
     expected = f"game10-apk-{build_id}"
 
     artifact = next(
         (
             item
-            for item in response.json().get("artifacts", [])
+            for item in response.json().get(
+                "artifacts", []
+            )
             if item.get("name") == expected
             and not item.get("expired")
         ),
@@ -569,7 +1061,8 @@ def download_apk(build_id: str):
     if not artifact:
         raise HTTPException(
             404,
-            f"Artifact {expected} not found. Check workflow output."
+            f"Artifact {expected} not found. "
+            "Check workflow output.",
         )
 
     try:
@@ -578,32 +1071,47 @@ def download_apk(build_id: str):
             headers=headers,
             timeout=90,
         )
+
     except requests.RequestException:
         raise HTTPException(
-            502, "Could not download the GitHub artifact."
+            502,
+            "Could not download the GitHub artifact.",
         )
 
-    github_api_error(archive_response, "artifact download")
+    github_api_error(
+        archive_response,
+        "artifact download",
+    )
 
     temp_dir = Path(
         tempfile.mkdtemp(prefix="game10-")
     )
 
     archive_path = temp_dir / "artifact.zip"
-    archive_path.write_bytes(archive_response.content)
 
-    apk_path = temp_dir / f"Game10-{build_id}.apk"
+    archive_path.write_bytes(
+        archive_response.content
+    )
+
+    apk_path = (
+        temp_dir / f"Game10-{build_id}.apk"
+    )
 
     try:
-        with zipfile.ZipFile(archive_path) as archive:
+        with zipfile.ZipFile(
+            archive_path
+        ) as archive:
+
             names = [
-                name for name in archive.namelist()
+                name
+                for name in archive.namelist()
                 if name.lower().endswith(".apk")
             ]
 
             if not names:
                 raise HTTPException(
-                    404, "Artifact ZIP contains no APK file."
+                    404,
+                    "Artifact ZIP contains no APK file.",
                 )
 
             apk_path.write_bytes(
@@ -612,11 +1120,14 @@ def download_apk(build_id: str):
 
     except zipfile.BadZipFile:
         raise HTTPException(
-            502, "GitHub returned an invalid artifact ZIP."
+            502,
+            "GitHub returned an invalid artifact ZIP.",
         )
 
     return FileResponse(
         path=str(apk_path),
-        media_type="application/vnd.android.package-archive",
+        media_type=(
+            "application/vnd.android.package-archive"
+        ),
         filename=apk_path.name,
     )
