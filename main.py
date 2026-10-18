@@ -1,7 +1,4 @@
-
-
-
-
+import os
 from dotenv import load_dotenv
 load_dotenv()
 import re
@@ -40,31 +37,33 @@ BUILDS = DATA / "builds"
 GAMES.mkdir(parents=True, exist_ok=True)
 BUILDS.mkdir(parents=True, exist_ok=True)
 
-PUBLIC_BASE_URL =("PUBLIC_BASE_URL", "").rstrip("/")
-GEMINI_API_KEY ="AQ.Ab8RN6L8w4DyW5YqFmXgRztfse2qGf1>"
-GEMINI_MODEL ="gemini-3.8-flash"
-GITHUB_TOKEN ="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"
-GITHUB_REPOSITORY ="usaifurehman1-lgtm/Games-builder"
-GITHUB_WORKFLOW = "GITHUB_WORKFLOW", "build-apk.yml"
-GITHUB_REF = "GITHUB_REF", "main"
-
-
-# PYTHON AI API KEYS
-GROQ_API_KEY = "gsk_mTazx3IPoh3WkzFMSDgbWGdyb3FYOLOg>"
-SAMBANOVA_API_KEY ="4a6f8dbe-40df-47c8-b10a-34c56b3>"
-MISTRAL_API_KEY ="mstrl_Yl1YWz27Nbr59MSLGG6wbvZzHI6>"
-COHERE_API_KEY ="xEpKAy9E56hlJwvQcadq7sIoykU8NobtJu>"
-DEEPSEEK_API_KEY ="sk-4f6472053812dee9ff9f8b01f9d00>"
-TOGETHER_API_KEY ="key_Cg7cXYgH4gjV5aaAQCG5t"
-TOGETHER_API_KEY="key_Cg7cXYgH4gjV5aaAQCG5t"
-GROQ_API_KEY = "gsk_mTazx3IPoh3WkzFMSDgbWGdyb3FYOLOg>"
-OPENROUTER_API_KEY ="sk-or-v1-1981e6c4feb5da0cf1295>"
-REPLICATE_API_TOKEN ="r8_7E4ykYK8IrRPwJFGNMjWLi7Czs>"
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
 
 # ==========================================
-SAMBANOVA_API_KEY ="4a6f8dbe-40df-47c8-b10a-34c56b3>"
-OPENROUTER_API_KEY ="sk-or-v1-1981e6c4feb5da0cf1295>"
-DEEPSEEK_API_KEY ="sk-4f6472053812dee9ff9f8b01f9d00>"
+# API KEYS & CONFIGURATIONS
+# ==========================================
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AQ.Ab8RN6L8w4DyW5YqFmXgRztfse2qGf1").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "").strip()
+GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY", "").strip()
+GITHUB_WORKFLOW = os.getenv("GITHUB_WORKFLOW", "build-apk.yml").strip()
+GITHUB_REF = os.getenv("GITHUB_REF", "main").strip()
+
+# PYTHON AI API KEYS
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "gsk_mTazx3IPoh3WkzFMSDgbWGdyb3FYOLOg").strip()
+CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY", "").strip()
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "mstrl_Yl1YWz27Nbr59MSLGG6wbvZzHI6").strip()
+COHERE_API_KEY = os.getenv("COHERE_API_KEY", "xEpKAy9E56hlJwvQcadq7sIoykU8NobtJu").strip()
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "sk-4f6472053812dee9ff9f8b01f9d00").strip()
+TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY", "key_Cg7cXYgH4gjV5aaAQCG5t").strip()
+FIREWORKS_API_KEY = os.getenv("FIREWORKS_API_KEY", "").strip()
+PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY", "").strip()
+AI21_API_KEY = os.getenv("AI21_API_KEY", "").strip()
+REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "r8_7E4ykYK8IrRPwJFGNMjWLi7Czs").strip()
+SAMBANOVA_API_KEY = os.getenv("SAMBANOVA_API_KEY", "4a6f8dbe-40df-47c8-b10a-34c56b3").strip()
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "sk-or-v1-1981e6c4feb5da0cf1295").strip()
+HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY", "").strip()
 
 # REQUEST MODELS
 # ==========================================
