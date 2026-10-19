@@ -1,0 +1,100 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: "Unique Build ID"
+        required: true
+        type: string
+
+      game_id:
+        description: "Saved Game ID"
+        required: true
+        type: string
+
+      backend_url:
+        description: "Railway Backend URL"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Game APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Capacitor dependencies
+        run: |
+          npm install
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+
+      - name: Download saved game
+        env:
+          BACKEND_URL: ${{ inputs.backend_url }}
+          GAME_ID: ${{ inputs.game_id }}
+        run: |
+          mkdir -p www
+
+          curl --fail --show-error --location \
+            "${BACKEND_URL}/games/${GAME_ID}" \
+            --output www/index.html
+
+          test -s www/index.html
+
+      - name: Initialize Capacitor configuration
+        run: |
+          cat > capacitor.config.json <<'EOF'
+          {
+            "appId": "com.project100.game",
+            "appName": "Game10",
+            "webDir": "www"
+          }
+          EOF
+
+      - name: Add Android platform
+        run: |
+          npx cap add android
+
+      - name: Sync Android project
+        run: |
+          npx cap sync android
+
+      - name: Build APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Rename APK
+        env:
+          BUILD_ID: ${{ inputs.build_id }}
+        run: |
+          mkdir -p output
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+            "output/game10-${BUILD_ID}.apk"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: game10-apk-${{ inputs.build_id }}
+          path: output/*.apk
+          if-no-files-found: error
+          retention-days: 7
