@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 # GAME10 - SINGLE FILE RAILWAY BACKEND
 # ==========================================
 
-app = FastAPI(title="Game10 Backend", version="2.8.1")
+app = FastAPI(title="Game10 Backend", version="2.8.2")
 
 app.add_middleware(
     CORSMiddleware,
@@ -387,6 +387,17 @@ def game_record(game_id: str):
     if not record:
         raise HTTPException(404, "Game not found.")
     return record
+
+
+# नया राउट: GitHub Actions के लिए सीधे असली HTML फाइल सर्व करेगा
+@app.get("/api/games/{game_id}/html")
+def get_game_html(game_id: str):
+    if not valid_id(game_id):
+        raise HTTPException(400, "Invalid game ID.")
+    game_file = GAMES / game_id / "index.html"
+    if not game_file.is_file():
+        raise HTTPException(404, "Game HTML not found.")
+    return FileResponse(path=str(game_file), media_type="text/html")
 
 
 # ==========================================
