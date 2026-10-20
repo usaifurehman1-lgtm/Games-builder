@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 # GAME10 - SINGLE FILE RAILWAY BACKEND
 # ==========================================
 
-app = FastAPI(title="Game10 Backend", version="2.8.2")
+app = FastAPI(title="Game10 Backend", version="2.8.9")
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,29 +35,30 @@ BUILDS = DATA / "builds"
 GAMES.mkdir(parents=True, exist_ok=True)
 BUILDS.mkdir(parents=True, exist_ok=True)
 
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+# PUBLIC URL CONFIGURATION (Code first, then Railway variable)
+PUBLIC_BASE_URL = "".strip() or os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
 
-# GITHUB CONFIGURATION WITH TOKEN
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "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").strip()
-GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY", "").strip()
-GITHUB_WORKFLOW = os.getenv("GITHUB_WORKFLOW", "build-apk.yml").strip()
-GITHUB_REF = os.getenv("GITHUB_REF", "main").strip()
+# GITHUB CONFIGURATION WITH TOKEN (Code first, then Railway variable)
+GITHUB_TOKEN = "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".strip() or os.getenv("GITHUB_TOKEN", "").strip()
+GITHUB_REPOSITORY = "".strip() or os.getenv("GITHUB_REPOSITORY", "").strip() # 👈 यहाँ अपनी GitHub रिपॉजिटरी लिख लें (जैसे owner/repo)
+GITHUB_WORKFLOW = "build-apk.yml".strip() or os.getenv("GITHUB_WORKFLOW", "build-apk.yml").strip()
+GITHUB_REF = "main".strip() or os.getenv("GITHUB_REF", "main").strip()
 
 # ==========================================
-# ALL AI API KEYS & CONFIGURATIONS
+# ALL AI API KEYS & CONFIGURATIONS (Code first, then Railway variable)
 # ==========================================
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AQ.Ab8RN6L8w4DyW5YqFmXgRztfse2qGf1").strip()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
+GEMINI_API_KEY = "AQ.Ab8RN6L8w4DyW5YqFmXgRztfse2qGf1".strip() or os.getenv("GEMINI_API_KEY", "").strip()
+GEMINI_MODEL = "gemini-3.8-flash".strip() or os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "gsk_mTazx3IPoh3WkzFMSDgbWGdyb3FYOLOg").strip()
-MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "mstrl_Yl1YWz27Nbr59MSLGG6wbvZzHI6").strip()
-COHERE_API_KEY = os.getenv("COHERE_API_KEY", "xEpKAy9E56hlJwvQcadq7sIoykU8NobtJu").strip()
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "sk-4f6472053812dee9ff9f8b01f9d00").strip()
-TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY", "key_Cg7cXYgH4gjV5aaAQCG5t").strip()
-REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "r8_7E4ykYK8IrRPwJFGNMjWLi7Czs").strip()
-SAMBANOVA_API_KEY = os.getenv("SAMBANOVA_API_KEY", "4a6f8dbe-40df-47c8-b10a-34c56b3").strip()
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "sk-or-v1-1981e6c4feb5da0cf1295").strip()
+GROQ_API_KEY = "gsk_mTazx3IPoh3WkzFMSDgbWGdyb3FYOLOg".strip() or os.getenv("GROQ_API_KEY", "").strip()
+MISTRAL_API_KEY = "mstrl_Yl1YWz27Nbr59MSLGG6wbvZzHI6".strip() or os.getenv("MISTRAL_API_KEY", "").strip()
+COHERE_API_KEY = "xEpKAy9E56hlJwvQcadq7sIoykU8NobtJu".strip() or os.getenv("COHERE_API_KEY", "").strip()
+DEEPSEEK_API_KEY = "sk-4f6472053812dee9ff9f8b01f9d00".strip() or os.getenv("DEEPSEEK_API_KEY", "").strip()
+TOGETHER_API_KEY = "key_Cg7cXYgH4gjV5aaAQCG5t".strip() or os.getenv("TOGETHER_API_KEY", "").strip()
+REPLICATE_API_TOKEN = "r8_7E4ykYK8IrRPwJFGNMjWLi7Czs".strip() or os.getenv("REPLICATE_API_TOKEN", "").strip()
+SAMBANOVA_API_KEY = "4a6f8dbe-40df-47c8-b10a-34c56b3".strip() or os.getenv("SAMBANOVA_API_KEY", "").strip()
+OPENROUTER_API_KEY = "sk-or-v1-1981e6c4feb5da0cf1295".strip() or os.getenv("OPENROUTER_API_KEY", "").strip()
 
 
 # ==========================================
@@ -190,10 +191,12 @@ def generate_game(body: GenerateInput):
         for model in models:
             endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
             try:
+                gemini_payload = {"contents": [{"parts": [{"text": prompt}]}]}
                 response = requests.post(
                     endpoint,
                     params={"key": GEMINI_API_KEY},
-                    json={"contents": [{"parts": [{"text": prompt}]}]},
+                    headers={"Content-Type": "application/json; charset=utf-8"},
+                    data=json.dumps(gemini_payload, ensure_ascii=True).encode('utf-8'),
                     timeout=(10, 35),
                 )
                 data = response.json() if response.ok else {}
@@ -207,12 +210,17 @@ def generate_game(body: GenerateInput):
     # 2. GROQ
     if GROQ_API_KEY:
         try:
-            headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
+            headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json; charset=utf-8"}
             payload = {
                 "model": "llama-3.3-70b-versatile",
                 "messages": [{"role": "system", "content": system_instruction}, {"role": "user", "content": user_prompt}]
             }
-            res = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload, timeout=40)
+            res = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions", 
+                headers=headers, 
+                data=json.dumps(payload, ensure_ascii=True).encode('utf-8'), 
+                timeout=40
+            )
             if res.ok:
                 html = clean_html_output(res.json()["choices"][0]["message"]["content"])
                 if "<html" in html.lower() or "<!doctype html" in html.lower():
@@ -223,12 +231,17 @@ def generate_game(body: GenerateInput):
     # 3. DEEPSEEK
     if DEEPSEEK_API_KEY:
         try:
-            headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"}
+            headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json; charset=utf-8"}
             payload = {
                 "model": "deepseek-chat",
                 "messages": [{"role": "system", "content": system_instruction}, {"role": "user", "content": user_prompt}]
             }
-            res = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=40)
+            res = requests.post(
+                "https://api.deepseek.com/chat/completions", 
+                headers=headers, 
+                data=json.dumps(payload, ensure_ascii=True).encode('utf-8'), 
+                timeout=40
+            )
             if res.ok:
                 html = clean_html_output(res.json()["choices"][0]["message"]["content"])
                 if "<html" in html.lower() or "<!doctype html" in html.lower():
@@ -239,12 +252,17 @@ def generate_game(body: GenerateInput):
     # 4. MISTRAL
     if MISTRAL_API_KEY:
         try:
-            headers = {"Authorization": f"Bearer {MISTRAL_API_KEY}", "Content-Type": "application/json"}
+            headers = {"Authorization": f"Bearer {MISTRAL_API_KEY}", "Content-Type": "application/json; charset=utf-8"}
             payload = {
                 "model": "mistral-large-latest",
                 "messages": [{"role": "system", "content": system_instruction}, {"role": "user", "content": user_prompt}]
             }
-            res = requests.post("https://api.mistral.ai/v1/chat/completions", headers=headers, json=payload, timeout=40)
+            res = requests.post(
+                "https://api.mistral.ai/v1/chat/completions", 
+                headers=headers, 
+                data=json.dumps(payload, ensure_ascii=True).encode('utf-8'), 
+                timeout=40
+            )
             if res.ok:
                 html = clean_html_output(res.json()["choices"][0]["message"]["content"])
                 if "<html" in html.lower() or "<!doctype html" in html.lower():
@@ -255,12 +273,17 @@ def generate_game(body: GenerateInput):
     # 5. OPENROUTER
     if OPENROUTER_API_KEY:
         try:
-            headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
+            headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json; charset=utf-8"}
             payload = {
                 "model": "anthropic/claude-3.5-sonnet",
                 "messages": [{"role": "system", "content": system_instruction}, {"role": "user", "content": user_prompt}]
             }
-            res = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=40)
+            res = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions", 
+                headers=headers, 
+                data=json.dumps(payload, ensure_ascii=True).encode('utf-8'), 
+                timeout=40
+            )
             if res.ok:
                 html = clean_html_output(res.json()["choices"][0]["message"]["content"])
                 if "<html" in html.lower() or "<!doctype html" in html.lower():
@@ -271,12 +294,17 @@ def generate_game(body: GenerateInput):
     # 6. TOGETHER AI
     if TOGETHER_API_KEY:
         try:
-            headers = {"Authorization": f"Bearer {TOGETHER_API_KEY}", "Content-Type": "application/json"}
+            headers = {"Authorization": f"Bearer {TOGETHER_API_KEY}", "Content-Type": "application/json; charset=utf-8"}
             payload = {
                 "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
                 "messages": [{"role": "system", "content": system_instruction}, {"role": "user", "content": user_prompt}]
             }
-            res = requests.post("https://api.together.xyz/v1/chat/completions", headers=headers, json=payload, timeout=40)
+            res = requests.post(
+                "https://api.together.xyz/v1/chat/completions", 
+                headers=headers, 
+                data=json.dumps(payload, ensure_ascii=True).encode('utf-8'), 
+                timeout=40
+            )
             if res.ok:
                 html = clean_html_output(res.json()["choices"][0]["message"]["content"])
                 if "<html" in html.lower() or "<!doctype html" in html.lower():
@@ -287,12 +315,17 @@ def generate_game(body: GenerateInput):
     # 7. SAMBANOVA
     if SAMBANOVA_API_KEY:
         try:
-            headers = {"Authorization": f"Bearer {SAMBANOVA_API_KEY}", "Content-Type": "application/json"}
+            headers = {"Authorization": f"Bearer {SAMBANOVA_API_KEY}", "Content-Type": "application/json; charset=utf-8"}
             payload = {
                 "model": "Meta-Llama-3.3-70B-Instruct",
                 "messages": [{"role": "system", "content": system_instruction}, {"role": "user", "content": user_prompt}]
             }
-            res = requests.post("https://api.sambanova.ai/v1/chat/completions", headers=headers, json=payload, timeout=40)
+            res = requests.post(
+                "https://api.sambanova.ai/v1/chat/completions", 
+                headers=headers, 
+                data=json.dumps(payload, ensure_ascii=True).encode('utf-8'), 
+                timeout=40
+            )
             if res.ok:
                 html = clean_html_output(res.json()["choices"][0]["message"]["content"])
                 if "<html" in html.lower() or "<!doctype html" in html.lower():
@@ -303,12 +336,17 @@ def generate_game(body: GenerateInput):
     # 8. COHERE
     if COHERE_API_KEY:
         try:
-            headers = {"Authorization": f"Bearer {COHERE_API_KEY}", "Content-Type": "application/json"}
+            headers = {"Authorization": f"Bearer {COHERE_API_KEY}", "Content-Type": "application/json; charset=utf-8"}
             payload = {
                 "model": "command-r-plus",
                 "messages": [{"role": "system", "content": system_instruction}, {"role": "user", "content": user_prompt}]
             }
-            res = requests.post("https://api.cohere.com/compatibility/v1/chat/completions", headers=headers, json=payload, timeout=40)
+            res = requests.post(
+                "https://api.cohere.com/compatibility/v1/chat/completions", 
+                headers=headers, 
+                data=json.dumps(payload, ensure_ascii=True).encode('utf-8'), 
+                timeout=40
+            )
             if res.ok:
                 html = clean_html_output(res.json()["choices"][0]["message"]["content"])
                 if "<html" in html.lower() or "<!doctype html" in html.lower():
@@ -319,12 +357,17 @@ def generate_game(body: GenerateInput):
     # 9. REPLICATE
     if REPLICATE_API_TOKEN:
         try:
-            headers = {"Authorization": f"Bearer {REPLICATE_API_TOKEN}", "Content-Type": "application/json", "Prefer": "wait"}
+            headers = {"Authorization": f"Bearer {REPLICATE_API_TOKEN}", "Content-Type": "application/json; charset=utf-8", "Prefer": "wait"}
             payload = {
                 "version": "meta/meta-llama-3-70b-instruct",
                 "input": {"prompt": f"{system_instruction}\n\n{user_prompt}", "max_new_tokens": 4000}
             }
-            res = requests.post("https://api.replicate.com/v1/predictions", headers=headers, json=payload, timeout=45)
+            res = requests.post(
+                "https://api.replicate.com/v1/predictions", 
+                headers=headers, 
+                data=json.dumps(payload, ensure_ascii=True).encode('utf-8'), 
+                timeout=45
+            )
             if res.ok:
                 data = res.json()
                 output = data.get("output", "")
@@ -389,7 +432,6 @@ def game_record(game_id: str):
     return record
 
 
-# नया राउट: GitHub Actions के लिए सीधे असली HTML फाइल सर्व करेगा
 @app.get("/api/games/{game_id}/html")
 def get_game_html(game_id: str):
     if not valid_id(game_id):
@@ -423,7 +465,12 @@ def request_build(body: BuildInput):
     }
 
     try:
-        response = requests.post(dispatch_url, headers=headers, json=payload, timeout=25)
+        response = requests.post(
+            dispatch_url, 
+            headers=headers, 
+            data=json.dumps(payload, ensure_ascii=True).encode('utf-8'), 
+            timeout=25
+        )
     except requests.RequestException:
         raise HTTPException(502, "Could not connect to GitHub Actions.")
 
