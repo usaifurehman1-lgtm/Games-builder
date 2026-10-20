@@ -53,8 +53,9 @@ jobs:
         run: |
           mkdir -p www
 
+          # यहाँ backend_url के साथ सही /api/games/{id}/html राउट सेट किया गया है
           curl --fail --show-error --location \
-            "${BACKEND_URL}/games/${GAME_ID}" \
+            "${BACKEND_URL}/api/games/${GAME_ID}/html" \
             --output www/index.html
 
           test -s www/index.html
